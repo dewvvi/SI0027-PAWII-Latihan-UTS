@@ -5,7 +5,6 @@
 // express-async-errors sudah aktif di app.js, jadi tidak perlu try/catch.
 
 const Menu = require("../models/menuModel");
-
 const MAX_LIMIT = 100;
 
 // GET /menu
@@ -18,8 +17,50 @@ const MAX_LIMIT = 100;
 // Respons 200: { data, page, limit, total }
 //   - total = jumlah dokumen yang cocok dengan filter (BUKAN jumlah data pada halaman ini)
 //   - data memuat kantinId yang ter-populate (objek Kantin)
-exports.getAll = async (req, res) => {
   // TODO B1
+  exports.getAll = async (req, res) => {
+  const {
+    kantinId,
+    sort = "createdAt",
+    fields,
+  } = req.query;
+
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(
+    MAX_LIMIT,
+    Math.max(1, parseInt(req.query.limit, 10) || 10)
+  );
+
+  const filter = {};
+
+  if (kantinId) {
+    filter.kantinId = kantinId;
+  }
+
+  const projection = fields
+    ? fields.split(",").map((field) => field.trim()).filter(Boolean).join(" ")
+    : undefined;
+
+  const total = await Menu.countDocuments(filter);
+
+  let query = Menu.find(filter)
+    .sort({ [sort]: 1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .populate("kantinId");
+
+  if (projection) {
+    query = query.select(projection);
+  }
+
+  const data = await query;
+
+  res.status(200).json({
+    data,
+    page,
+    limit,
+    total,
+  });
 };
 
 // GET /menu/:id
@@ -28,6 +69,12 @@ exports.getAll = async (req, res) => {
 //   - format id salah -> 400 (ditangani errorHandler lewat CastError)
 exports.getById = async (req, res) => {
   // TODO B2
+    const menu = await Menu.findById(req.params.id).populate("kantinId");
+
+  if (!menu) {
+    throw { status: 404, message: "Menu tidak ditemukan" };
+  }
+  res.status(200).json(menu);
 };
 
 // POST /menu
@@ -35,6 +82,11 @@ exports.getById = async (req, res) => {
 //   - validasi gagal / ISBN duplikat -> 400 (ditangani errorHandler)
 exports.create = async (req, res) => {
   // TODO B3
+  const menu = await Menu.create(req.body);
+
+  const result = await Menu.findById(menu._id).populate("kantinId");
+
+  res.status(201).json(result);
 };
 
 // PUT /menu/:id
@@ -42,7 +94,21 @@ exports.create = async (req, res) => {
 //   - validasi schema HARUS tetap berjalan saat update
 //   - tidak ada -> 404 { message }
 exports.update = async (req, res) => {
-  // TODO B4
+    // TODO B4
+  const menu = await Menu.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    {
+      new: true,
+      runValidators: true,
+    }
+  ).populate("kantinId");
+
+  if (!menu) {
+    throw { status: 404, message: "Menu tidak ditemukan" };
+  }
+
+  res.status(200).json(menu);
 };
 
 // DELETE /menu/:id
@@ -50,4 +116,11 @@ exports.update = async (req, res) => {
 //   - tidak ada -> 404 { message }
 exports.remove = async (req, res) => {
   // TODO B5
+  const menu = await Menu.findByIdAndDelete(req.params.id);
+
+  if (!menu) {
+    throw { status: 404, message: "Menu tidak ditemukan" };
+  }
+
+  res.status(204).end();
 };
